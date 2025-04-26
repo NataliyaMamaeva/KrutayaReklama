@@ -10,7 +10,7 @@ namespace KrutayaReklama
 
             // Add services to the container.
             builder.Services.AddControllersWithViews();
-            builder.Services.AddSingleton<DataStoregeService>();
+            builder.Services.AddSingleton<IPlatformService, PlatformService>();
 
             var app = builder.Build();
 

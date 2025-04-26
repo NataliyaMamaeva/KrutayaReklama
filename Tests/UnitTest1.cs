@@ -6,62 +6,95 @@ using System.Collections.Generic;
 using KrutayaReklama.Services;
 using KrutayaReklama.Controllers;
 using Microsoft.AspNetCore.Http;
+using Castle.Core.Logging;
+using Microsoft.Extensions.Logging;
+using Newtonsoft.Json.Linq;
+using System.IO;
 
 
 namespace Tests
 {
     public class UnitTest1
     {
-        [Fact]
-        public void UploadFile_ok()
+        [Theory]
+        [InlineData("яндекс.ƒирект:/ru\r\n рута€ реклама:/ru/svrd", 200, "‘айл успешно загружен")] 
+        [InlineData("", 400, "‘айл не загружен")] 
+        [InlineData("Ќекорректна€ строка без двоеточи€", 500, "ѕроизошла внутренн€€ ошибка сервера.")] 
+
+        public void UploadFile_All(string fileContent, int expectedStatusCode, string expectedMessage)
         {
             var mok = new Mock<IFormFile>();
-            var content = "яндекс.ƒирект:/ru\r\n" +
-                "–евдинский рабочий:/ru/svrd/revda,/ru/svrd/pervik\r\n" +
-                "√азета уральских москвичей:/ru/msk,/ru/permobl,/ru/chelobl\r\n" +
-                " рута€ реклама:/ru/svrd\r\n";
-
+            
             var fileStream = new MemoryStream();
             var writer = new StreamWriter(fileStream);
-            writer.Write(content);
+            writer.Write(fileContent);
             writer.Flush();
             fileStream.Position = 0;
             mok.Setup(f => f.OpenReadStream()).Returns(fileStream);
-            DataStoregeService service = new DataStoregeService();
-            
-            var controller = new HomeController(service);
+            mok.Setup(f => f.Length).Returns(fileStream.Length);
+
+            var mokLogger = new Mock <ILogger<PlatformService>>();
+            IPlatformService service = new PlatformService(mokLogger.Object);
+            var mokControllerLogger = new Mock<ILogger<HomeController>>();
+
+            var controller = new HomeController(mokControllerLogger.Object, service);
             var result = controller.UploadFile(mok.Object);
-            var json = Assert.IsType<JsonResult>(result);
-            //var message = Assert.IsType<string>(json.Value);
-            Assert.Equal("{ message = sucseed }", json.Value.ToString());
+
+            if (expectedStatusCode == 400)
+            {
+                var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+                Assert.Equal(expectedStatusCode, badRequest.StatusCode);
+                Assert.Contains(expectedMessage, badRequest.Value.ToString());
+            }
+            else if (expectedStatusCode == 500)
+            {
+                var serverError = Assert.IsType<ObjectResult>(result);
+                Assert.Equal(expectedStatusCode, serverError.StatusCode);
+                Assert.Contains(expectedMessage, serverError.Value.ToString());
+            }
+            else
+            {
+                var okResult = Assert.IsType<OkObjectResult>(result);
+                Assert.Equal(expectedStatusCode, okResult.StatusCode);
+                Assert.Contains(expectedMessage, okResult.Value.ToString());
+            }
         }
 
 
-        [Fact]
-        public void FindPlatforms_list()
+        [Theory]
+        [InlineData("/ru", 200)]
+        [InlineData("", 400)]
+        [InlineData("---", 500)]
+        public void FindPlatforms_list(string location, int statusCode)
         {
-            DataStoregeService service = new DataStoregeService();
-            Location l1 = new Location() { Title = "ru", Parent = null };
-            Location l2 = new Location() { Title = "chelobl", Parent = l1 };
-            Location l3 = new Location() { Title = "varna", Parent = l2 };
-            Location l4 = new Location() { Title = "pokrovka", Parent = l3 };
-            Location l5 = new Location() { Title = "svrd", Parent = l1 };
-            Location l6 = new Location() { Title = "ekb", Parent = l5 };
+            var mokLogger = new Mock<ILogger<PlatformService>>();
+            PlatformService service = new PlatformService(mokLogger.Object);
+            service.LocationAllPlatforms = new Dictionary<string, List<string>>
+            {
+                { "ru", new List<string>{ "яндекс.ƒирект", " рута€ реклама" } },
+                { "svrd", new List<string>{ " рута€ реклама" } },
+            };
 
-            service.platforms = new Dictionary<string, HashSet<Location>> { { "уральский труд€га", new() {l4} },
-                { "€ндексƒирект", new() { l1 } },{"мегаполис", new() { l6} } };
+            var mokControllerLogger = new Mock<ILogger<HomeController>>();
+            var controller = new HomeController(mokControllerLogger.Object, service);
 
-            service.locations = new() { l1, l2, l3, l4, l5, l6 };
+            var result = controller.FindPlatforms(location);
+            if(statusCode == 200)
+            {
+                var response = Assert.IsType<OkObjectResult>(result);
+                Assert.Equal(statusCode, response.StatusCode);
+            }
+            else if(statusCode == 400)
+            {
+                var response = Assert.IsType<BadRequestObjectResult>(result);
+                Assert.Equal(statusCode, response.StatusCode);
+            }
+            else
+            {
+                var response = Assert.IsType<ObjectResult>(result);
+                Assert.Equal(statusCode, response.StatusCode);
+            }
 
-            var controller = new HomeController(service);
-
-            var result = controller.FindPlatforms("pokrovka");
-            List<string> expected = new List<string>() {  "уральский труд€га", "€ндексƒирект" };
-
-            var isJson = Assert.IsType<JsonResult>(result);
-            var actual = Assert.IsType<List<string>>(isJson.Value);
-
-            Assert.Equal(expected, actual);
         }
 
     }

@@ -51,27 +51,38 @@
             method: "POST",
             body: formData
         });
-
-        let result = await response.json(); 
-        alert(result.message); 
+        const data = await response.json();
+          if (!response.ok) {
+            alert(data.error);
+        } else {
+           alert(data.message); 
+        }
+       
     });
 
     async function searchPlatformsByLocation(){
         let location = document.querySelector('#location').value;
         let platformList = document.querySelector('#locationsList');
+       // console.log(location);
         platformList.innerHTML = "";
         let response = await fetch(`/Home/FindPlatforms?location=${location}`, {
             method: "GET"
         });
+        const platforms = await response.json();
+         if (!response.ok) {
+            alert(platforms.error);
+        } else {
+           
+            //console.log(platforms);
 
-       let platforms =await response.json();
-        console.log(platforms);
-
-        for (var p in platforms) {
-            let li = document.createElement("li");
-            li.textContent = platforms[p];
-            platformList.appendChild(li);
+            for (var p in platforms) {
+                let li = document.createElement("li");
+                li.textContent = platforms[p];
+                platformList.appendChild(li);
+            }
         }
+
+      
     }
 </script>
 
